@@ -14,11 +14,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
+          cache: ''
       - name: Install dependencies
-        run: npm install
-      - name: Run lint
-        run: npm run lint --if-present
-      - name: Run typecheck
-        run: npm run typecheck --if-present
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
       - name: Build
-        run: npm run build --if-present
+        run: npm run build
+      - name: Run typecheck
+        run: npm run typecheck
+      - name: Run lint
+        run: npm run lint
