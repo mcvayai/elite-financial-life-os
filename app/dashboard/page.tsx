@@ -1,163 +1,98 @@
-'use client';
+'use client'
 
-import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 
-interface UserProfile {
-  name: string;
-  income: number; // monthly income
-}
-
-interface BudgetCategory {
-  id: string;
-  name: string;
-  planned: number; // planned monthly budget
-  spent: number; // amount spent this month
-}
+type UserProfile = { name: string; income: number }
+type BudgetCategory = { id: string; name: string; planned: number; spent: number }
 
 export default function Dashboard() {
-  // Profile
-  const [profile, setProfile] = useState<UserProfile>({ name: 'User', income: 0 });
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [profile, setProfile] = useState<UserProfile>({ name: 'User', income: 0 })
+  const [isLoaded, setIsLoaded] = useState(false)
+  const [biblicalMode, setBiblicalMode] = useState(false)
+  const [budgets, setBudgets] = useState<BudgetCategory[]>([])
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatPlanned, setNewCatPlanned] = useState('')
 
-  // Biblical mode
-  const [biblicalMode, setBiblicalMode] = useState<boolean>(false);
+  const [message, setMessage] = useState('')
+  const [coachReply, setCoachReply] = useState('')
+  const [coachError, setCoachError] = useState('')
+  const [coachLoading, setCoachLoading] = useState(false)
 
-  // Budgets
-  const [budgets, setBudgets] = useState<BudgetCategory[]>([]);
-  const [newCatName, setNewCatName] = useState('');
-  const [newCatPlanned, setNewCatPlanned] = useState('');
-
-  // Coach
-  const [message, setMessage] = useState('');
-  const [coachReply, setCoachReply] = useState<string>('');
-  const [coachError, setCoachError] = useState<string>('');
-  const [coachLoading, setCoachLoading] = useState<boolean>(false);
-
-  // Load from localStorage on mount
   useEffect(() => {
     try {
-      const savedUser = localStorage.getItem('userData');
+      const savedUser = localStorage.getItem('userData')
       if (savedUser) {
-        const parsed = JSON.parse(savedUser);
-        setProfile({
-          name: parsed.name || 'User',
-          income: Number(parsed.income) || 0,
-        });
+        const parsed = JSON.parse(savedUser)
+        setProfile({ name: parsed.name || 'User', income: Number(parsed.income) || 0 })
       }
-
-      const savedBiblicalMode = localStorage.getItem('biblicalMode');
-      if (savedBiblicalMode !== null) {
-        setBiblicalMode(JSON.parse(savedBiblicalMode));
-      }
-
-      const savedBudgets = localStorage.getItem('budgets');
+      const savedBiblical = localStorage.getItem('biblicalMode')
+      if (savedBiblical !== null) setBiblicalMode(JSON.parse(savedBiblical))
+      const savedBudgets = localStorage.getItem('budgets')
       if (savedBudgets) {
-        setBudgets(JSON.parse(savedBudgets));
+        setBudgets(JSON.parse(savedBudgets))
       } else {
-        // Seed with a few example categories
         const seed: BudgetCategory[] = [
           { id: 'housing', name: 'Housing', planned: 1500, spent: 0 },
           { id: 'food', name: 'Food', planned: 500, spent: 0 },
           { id: 'giving', name: 'Giving', planned: 500, spent: 0 },
-        ];
-        setBudgets(seed);
-        localStorage.setItem('budgets', JSON.stringify(seed));
+        ]
+        setBudgets(seed)
+        localStorage.setItem('budgets', JSON.stringify(seed))
       }
-    } catch (e) {
-      console.error('Failed to load local settings', e);
     } finally {
-      setIsLoaded(true);
+      setIsLoaded(true)
     }
-
-    // Live update biblical mode from Settings via custom event
-    const onBiblicalModeChanged = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail && typeof detail.biblicalMode === 'boolean') {
-        setBiblicalMode(detail.biblicalMode);
-      }
-    };
-    window.addEventListener('biblicalModeChanged', onBiblicalModeChanged as EventListener);
-    return () => window.removeEventListener('biblicalModeChanged', onBiblicalModeChanged as EventListener);
-  }, []);
-
-  // Persist budgets when they change
-  useEffect(() => {
-    if (!isLoaded) return;
-    try {
-      localStorage.setItem('budgets', JSON.stringify(budgets));
-    } catch (e) {
-      console.error('Failed to save budgets', e);
+    const onBiblical = (e: Event) => {
+      const d = (e as CustomEvent).detail
+      if (d && typeof d.biblicalMode === 'boolean') setBiblicalMode(d.biblicalMode)
     }
-  }, [budgets, isLoaded]);
+    window.addEventListener('biblicalModeChanged', onBiblical as EventListener)
+    return () => window.removeEventListener('biblicalModeChanged', onBiblical as EventListener)
+  }, [])
 
-  // Persist profile on change
-  useEffect(() => {
-    if (!isLoaded) return;
-    try {
-      localStorage.setItem('userData', JSON.stringify(profile));
-    } catch (e) {
-      console.error('Failed to save profile', e);
-    }
-  }, [profile, isLoaded]);
+  useEffect(() => { if (isLoaded) localStorage.setItem('budgets', JSON.stringify(budgets)) }, [budgets, isLoaded])
+  useEffect(() => { if (isLoaded) localStorage.setItem('userData', JSON.stringify(profile)) }, [profile, isLoaded])
 
-  // Computed totals
   const totals = useMemo(() => {
-    const planned = budgets.reduce((sum, b) => sum + (Number(b.planned) || 0), 0);
-    const spent = budgets.reduce((sum, b) => sum + (Number(b.spent) || 0), 0);
-    const remaining = Math.max(planned - spent, 0);
-    return { planned, spent, remaining };
-  }, [budgets]);
+    const planned = budgets.reduce((s, b) => s + (Number(b.planned) || 0), 0)
+    const spent = budgets.reduce((s, b) => s + (Number(b.spent) || 0), 0)
+    return { planned, spent, remaining: Math.max(planned - spent, 0) }
+  }, [budgets])
 
-  // Budget actions
   const addCategory = () => {
-    const name = newCatName.trim();
-    const planned = Number(newCatPlanned);
-    if (!name || isNaN(planned) || planned < 0) return;
-    const id = `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
-    setBudgets(prev => [...prev, { id, name, planned, spent: 0 }]);
-    setNewCatName('');
-    setNewCatPlanned('');
-  };
+    const name = newCatName.trim(); const planned = Number(newCatPlanned)
+    if (!name || isNaN(planned) || planned < 0) return
+    const id = `${name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`
+    setBudgets(p => [...p, { id, name, planned, spent: 0 }])
+    setNewCatName(''); setNewCatPlanned('')
+  }
+  const removeCategory = (id: string) => setBudgets(p => p.filter(b => b.id !== id))
+  const updatePlanned = (id: string, planned: number) => setBudgets(p => p.map(b => b.id === id ? { ...b, planned: Math.max(planned, 0) } : b))
+  const updateSpent = (id: string, spent: number) => setBudgets(p => p.map(b => b.id === id ? { ...b, spent: Math.max(spent, 0) } : b))
 
-  const removeCategory = (id: string) => {
-    setBudgets(prev => prev.filter(b => b.id !== id));
-  };
-
-  const updatePlanned = (id: string, planned: number) => {
-    setBudgets(prev => prev.map(b => (b.id === id ? { ...b, planned: Math.max(planned, 0) } : b)));
-  };
-
-  const updateSpent = (id: string, spent: number) => {
-    setBudgets(prev => prev.map(b => (b.id === id ? { ...b, spent: Math.max(spent, 0) } : b)));
-  };
-
-  // Coach ask
   const askCoach = async () => {
-    if (!message.trim()) return;
-    setCoachError('');
-    setCoachReply('');
-    setCoachLoading(true);
+    if (!message.trim()) return
+    setCoachError(''); setCoachReply(''); setCoachLoading(true)
     try {
       const context = {
         user: { name: profile.name, income: profile.income },
         budgets: budgets.map(({ name, planned, spent }) => ({ name, planned, spent })),
         summary: `Income ${profile.income}, planned ${totals.planned}, spent ${totals.spent}`,
-      };
+      }
       const res = await fetch('/api/coach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context, biblicalMode }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to get response');
-      setCoachReply(data.reply || '');
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, context, biblicalMode })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Failed to get response')
+      setCoachReply((data.reply || '').trim())
     } catch (e: any) {
-      setCoachError(e.message || 'Something went wrong.');
+      setCoachError(e.message || 'Something went wrong.')
     } finally {
-      setCoachLoading(false);
+      setCoachLoading(false)
     }
-  };
+  }
 
   if (!isLoaded) {
     return (
@@ -171,27 +106,20 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-100 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Welcome, {profile.name}!</h1>
             <p className="text-gray-600">Your Elite Financial Life OS dashboard</p>
           </div>
-          <Link href="/settings" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white shadow text-indigo-700 hover:bg-indigo-50">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756.426-1.756 2.924 0 3.35a1.724 1.724 0 001.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756.426-1.756 2.924 0 3.35a1.724 1.724 0 001.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756.426-1.756 2.924 0 3.35a1.724 1.724 0 001.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572z" />
-            </svg>
-            Settings
-          </Link>
+          <Link href="/settings" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white shadow text-indigo-700 hover:bg-indigo-50">Settings</Link>
         </div>
 
-        {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-6 bg-white rounded-xl shadow">
             <h3 className="text-gray-600">Monthly Income</h3>
@@ -207,16 +135,82 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Profile card */}
         <div className="bg-white rounded-xl shadow p-6">
           <h2 className="text-xl font-semibold mb-4 text-gray-900">Your Profile</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm text-gray-600 mb-1">Name</label>
-              <input
-                type="text"
-                value={profile.name}
-                onChange={(e) => setProfile(p => ({ ...p, name: e.target.value }))}
-                className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+              <input type="text" value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Monthly Income</label>
+              <input type="number" min={0} value={profile.income} onChange={e => setProfile(p => ({ ...p, income: Number(e.target.value) }))} className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div className="flex items-end">
+              <div className="inline-flex items-center gap-2 px-3 py-2 bg-indigo-50 text-indigo-700 rounded-lg">
+                <span className="text-sm font-medium">Biblical Mode:</span>
+                <span className="text-sm font-semibold">{biblicalMode ? 'On' : 'Off'}</span>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Profile is stored locally in your browser (no sign-in required).</p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Budget Categories</h2>
+            <div className="text-sm text-gray-600">Remaining: <span className="font-semibold text-gray-900">${(totals.planned - totals.spent).toLocaleString()}</span></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {budgets.map(b => {
+              const pct = b.planned > 0 ? Math.min((b.spent / b.planned) * 100, 100) : 0
+              const bar = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'
+              return (
+                <div key={b.id} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-gray-900">{b.name}</h3>
+                    <button onClick={() => removeCategory(b.id)} className="text-gray-400 hover:text-red-600" aria-label={`Remove ${b.name}`}>✕</button>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded mt-2 overflow-hidden">
+                    <div className={`${bar} h-2`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600 mt-1">
+                    <span>Spent: ${b.spent.toLocaleString()}</span>
+                    <span>Planned: ${b.planned.toLocaleString()}</span>
+                    <span>{Math.round(pct)}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Planned</label>
+                      <input type="number" min={0} value={b.planned} onChange={e => updatePlanned(b.id, Number(e.target.value))} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Spent</label>
+                      <input type="number" min={0} value={b.spent} onChange={e => updateSpent(b.id, Number(e.target.value))} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500" />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input type="text" placeholder="Category name" value={newCatName} onChange={e => setNewCatName(e.target.value)} className="px-3 py-2 border rounded-lg" />
+            <input type="number" min={0} placeholder="Planned $/mo" value={newCatPlanned} onChange={e => setNewCatPlanned(e.target.value)} className="px-3 py-2 border rounded-lg" />
+            <button onClick={addCategory} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Add Category</button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow p-6">
+          <h2 className="text-xl font-semibold mb-3 text-gray-900">AI Coach</h2>
+          <div className="flex gap-2 mb-3">
+            <input type="text" placeholder="Ask your AI coach..." value={message} onChange={e => setMessage(e.target.value)} className="flex-1 px-4 py-2 border rounded" />
+            <button onClick={askCoach} className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" disabled={coachLoading}>{coachLoading ? 'Thinking…' : 'Ask'}</button>
+          </div>
+          {coachError && <div className="p-3 bg-red-50 text-red-700 rounded border border-red-200">{coachError}</div>}
+          {coachReply && <div className="p-4 bg-gray-50 rounded border border-gray-200 whitespace-pre-wrap">{coachReply}</div>}
+          {biblicalMode && <p className="text-xs text-indigo-700 mt-2">Biblical mode is ON. Responses may include scripture-based principles.</p>}
+        </div>
+      </div>
+    </main>
+  )
+}
